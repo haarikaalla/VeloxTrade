@@ -1,0 +1,209 @@
+<header class="top">
+  <div class="brand">
+    <span class="eyebrow">Simulated market terminal</span>
+    <h1>VELOX<span>TRADE</span></h1>
+  </div>
+
+  <div class="status-group">
+    <span class="chip" [class.live]="streaming()">
+      {{ streaming() ? 'STREAMING' : platformOnline() ? 'POLLING' : 'OFFLINE' }}
+    </span>
+    @if (auth.isAuthenticated()) {
+      <span class="who">{{ auth.displayName() }}</span>
+      <button class="ghost" type="button" (click)="logout()">Sign out</button>
+    }
+  </div>
+</header>
+
+@if (!platformOnline()) {
+  <p class="banner" role="status">
+    The trading platform is not reachable. Start the stack with
+    <code>docker compose up --build</code> and this screen will reconnect automatically.
+  </p>
+}
+
+<section class="hero">
+  <div class="quote">
+    <span class="symbol">{{ symbol }} · Velox Synthetic Index</span>
+    <div class="price">{{ quote()?.price ?? 0 | number: '1.2-2' }}</div>
+    <div class="delta" [class.down]="changePercent() < 0">
+      {{ changePercent() >= 0 ? '▲' : '▼' }} {{ changePercent() | percent: '1.2-2' }}
+      <small>session</small>
+    </div>
+    <dl class="micro">
+      <div><dt>Bid</dt><dd>{{ quote()?.bid ?? 0 | number: '1.2-2' }}</dd></div>
+      <div><dt>Ask</dt><dd>{{ quote()?.ask ?? 0 | number: '1.2-2' }}</dd></div>
+      <div><dt>Spread</dt><dd>{{ spread() | number: '1.2-2' }}</dd></div>
+      <div><dt>Resting</dt><dd>{{ quote()?.restingOrders ?? 0 | number }}</dd></div>
+    </dl>
+  </div>
+
+  <div class="chart-wrap">
+    <vt-price-chart [ticks]="ticks()" />
+    <span class="axis">Live tick history · matched by the C++ engine</span>
+  </div>
+</section>
+
+<section class="grid">
+  <article class="card book">
+    <h2>Order book <small>{{ symbol }}</small></h2>
+    <vt-order-book [depth]="depth()" />
+  </article>
+
+  <article class="card">
+    @if (auth.isAuthenticated()) {
+      <h2>Order ticket</h2>
+      <form [formGroup]="orderForm" (ngSubmit)="submitOrder()">
+        <div class="side-tabs">
+          <button
+            type="button"
+            class="buy"
+            [class.active]="orderForm.controls.side.value === 'BUY'"
+            (click)="setSide('BUY')"
+          >
+            Buy
+          </button>
+          <button
+            type="button"
+            class="sell"
+            [class.active]="orderForm.controls.side.value === 'SELL'"
+            (click)="setSide('SELL')"
+          >
+            Sell
+          </button>
+        </div>
+
+        <label>
+          Quantity
+          <input formControlName="quantity" type="number" min="1" step="1" />
+        </label>
+        <label>
+          Limit price
+          <input formControlName="limitPrice" type="number" min="0.01" step="0.01" />
+        </label>
+
+        <button class="ghost wide" type="button" (click)="useMarketPrice()">
+          Use best {{ orderForm.controls.side.value === 'BUY' ? 'ask' : 'bid' }}
+        </button>
+        <button
+          class="submit"
+          type="submit"
+          [class.sell]="orderForm.controls.side.value === 'SELL'"
+          [disabled]="orderForm.invalid || submitting()"
+        >
+          {{ submitting() ? 'Routing…' : orderForm.controls.side.value + ' ' + symbol }}
+        </button>
+      </form>
+
+      @if (notice()) {
+        <p class="notice" [class.error]="noticeTone() === 'error'" role="status">{{ notice() }}</p>
+      }
+    } @else {
+      <vt-auth-panel />
+    }
+  </article>
+
+  <article class="card">
+    <h2>Portfolio</h2>
+    @if (portfolio(); as book) {
+      <div class="metric">
+        <span>Net liquidation</span>
+        <b>{{ book.netLiquidation | currency: 'USD' }}</b>
+      </div>
+      <div class="metric">
+        <span>Cash</span>
+        <b>{{ book.cashBalance | currency: 'USD' }}</b>
+      </div>
+      <div class="metric">
+        <span>Positions value</span>
+        <b>{{ book.positionsValue | currency: 'USD' }}</b>
+      </div>
+      <div class="metric">
+        <span>Unrealised P&amp;L</span>
+        <b [class.up]="book.unrealizedPnl >= 0" [class.down]="book.unrealizedPnl < 0">
+          {{ book.unrealizedPnl | currency: 'USD' }}
+        </b>
+      </div>
+
+      <h3>Holdings</h3>
+      @for (position of book.positions; track position.symbol) {
+        <div class="metric small">
+          <span>{{ position.symbol }} × {{ position.quantity | number }}</span>
+          <b>avg {{ position.averagePrice | number: '1.2-2' }}</b>
+        </div>
+      } @empty {
+        <p class="muted">No open positions yet.</p>
+      }
+    } @else {
+      <p class="muted">Sign in to see live account equity and holdings.</p>
+    }
+  </article>
+
+  <article class="card">
+    <h2>Analytics signal</h2>
+    @if (signalView(); as forecast) {
+      <div class="signal" [class.down]="forecast.direction === 'DOWN'">
+        {{ forecast.direction }}
+      </div>
+      <div class="metric">
+        <span>Confidence</span><b>{{ forecast.confidence | percent: '1.0-1' }}</b>
+      </div>
+      <div class="metric">
+        <span>Horizon</span><b>{{ forecast.horizonSeconds }}s</b>
+      </div>
+      <div class="metric">
+        <span>Realised vol</span><b>{{ forecast.volatility | number: '1.5-5' }}</b>
+      </div>
+      <p class="muted">{{ forecast.disclaimer }}</p>
+    } @else {
+      <p class="muted">Analytics service is warming up…</p>
+    }
+  </article>
+
+  <article class="card wide-card">
+    <h2>Recent orders</h2>
+    @if (auth.isAuthenticated()) {
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Side</th>
+            <th>Qty</th>
+            <th>Limit</th>
+            <th>Filled</th>
+            <th>Avg fill</th>
+            <th>Status</th>
+            <th>Match latency</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (order of orders(); track order.orderId) {
+            <tr>
+              <td>{{ order.createdAt | date: 'HH:mm:ss' }}</td>
+              <td [class.up]="order.side === 'BUY'" [class.down]="order.side === 'SELL'">
+                {{ order.side }}
+              </td>
+              <td>{{ order.quantity | number }}</td>
+              <td>{{ order.limitPrice | number: '1.2-2' }}</td>
+              <td>{{ order.filledQuantity | number }}</td>
+              <td>{{ order.averageFillPrice ? (order.averageFillPrice | number: '1.2-2') : '—' }}</td>
+              <td>{{ order.status }}</td>
+              <td>{{ latencyLabel(order.matchLatencyNanos) }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="muted" colspan="8">No orders routed in this session.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <p class="muted">Sign in to review your routed orders and engine match latency.</p>
+    }
+  </article>
+</section>
+
+<footer>
+  VeloxTrade is an educational simulation. Prices, accounts, analytics and fills are synthetic —
+  nothing here is market data, investment advice, or a real execution venue.
+</footer>

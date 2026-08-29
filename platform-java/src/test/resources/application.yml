@@ -1,0 +1,35 @@
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+  datasource:
+    url: jdbc:h2:mem:veloxtrade;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+
+veloxtrade:
+  symbol: VLX
+  opening-cash: 100000.00
+  # Long interval keeps the scheduler out of the way of deterministic tests.
+  tick-interval: 1h
+  allowed-origins: http://localhost:4200
+  engine:
+    base-url: http://localhost:18081
+    timeout: 1s
+  analytics:
+    base-url: http://localhost:18000
+    timeout: 1s
+  security:
+    jwt-secret: veloxtrade-test-secret-value-that-is-long-enough
+    token-ttl: 1h
+
+logging:
+  level:
+    org.hibernate.SQL: warn

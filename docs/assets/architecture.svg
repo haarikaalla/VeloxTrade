@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" role="img" aria-label="VeloxTrade architecture diagram">
+  <defs>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0e2620"/>
+      <stop offset="100%" stop-color="#0a1c18"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#67f0a2"/>
+    </marker>
+    <marker id="arrowDim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4d7a6b"/>
+    </marker>
+  </defs>
+
+  <rect width="1000" height="560" fill="#07120f"/>
+
+  <g font-family="'Segoe UI', Arial, sans-serif">
+    <text x="40" y="46" font-size="22" font-weight="800" fill="#eafff4">VeloxTrade — service topology</text>
+    <text x="40" y="70" font-size="13" fill="#7fa596">Every boundary is HTTP/JSON. The browser also holds a STOMP WebSocket for push.</text>
+
+    <!-- Browser tier -->
+    <g>
+      <rect x="40" y="104" width="230" height="96" rx="14" fill="url(#card)" stroke="#67f0a2" stroke-opacity="0.5"/>
+      <text x="60" y="134" font-size="16" font-weight="700" fill="#67f0a2">Angular 19 dashboard</text>
+      <text x="60" y="157" font-size="12" fill="#9dc0b2">Standalone · signals · OnPush</text>
+      <text x="60" y="177" font-size="12" fill="#9dc0b2">nginx serves + proxies /api, /ws</text>
+    </g>
+
+    <!-- Platform -->
+    <g>
+      <rect x="385" y="104" width="240" height="96" rx="14" fill="url(#card)" stroke="#67f0a2" stroke-opacity="0.75"/>
+      <text x="405" y="134" font-size="16" font-weight="700" fill="#67f0a2">Spring Boot 3.4 platform</text>
+      <text x="405" y="157" font-size="12" fill="#9dc0b2">JWT auth · JPA · Flyway</text>
+      <text x="405" y="177" font-size="12" fill="#9dc0b2">STOMP broker · Actuator</text>
+    </g>
+
+    <!-- Engine -->
+    <g>
+      <rect x="740" y="60" width="220" height="92" rx="14" fill="url(#card)" stroke="#3ad1f0" stroke-opacity="0.6"/>
+      <text x="760" y="90" font-size="16" font-weight="700" fill="#3ad1f0">C++20 matching engine</text>
+      <text x="760" y="112" font-size="12" fill="#9dc0b2">Price-time priority book</text>
+      <text x="760" y="132" font-size="12" fill="#9dc0b2">Zero dependencies</text>
+    </g>
+
+    <!-- Analytics -->
+    <g>
+      <rect x="740" y="176" width="220" height="92" rx="14" fill="url(#card)" stroke="#f0c93a" stroke-opacity="0.55"/>
+      <text x="760" y="206" font-size="16" font-weight="700" fill="#f0c93a">FastAPI analytics</text>
+      <text x="760" y="228" font-size="12" fill="#9dc0b2">EWMA momentum model</text>
+      <text x="760" y="248" font-size="12" fill="#9dc0b2">Directional signal</text>
+    </g>
+
+    <!-- Data tier -->
+    <g>
+      <rect x="330" y="290" width="160" height="80" rx="14" fill="url(#card)" stroke="#4d7a6b"/>
+      <text x="350" y="320" font-size="14" font-weight="700" fill="#cfe6db">PostgreSQL</text>
+      <text x="350" y="342" font-size="12" fill="#9dc0b2">+ TimescaleDB</text>
+      <text x="350" y="360" font-size="12" fill="#9dc0b2">ticks hypertable</text>
+
+      <rect x="516" y="290" width="140" height="80" rx="14" fill="url(#card)" stroke="#4d7a6b"/>
+      <text x="536" y="320" font-size="14" font-weight="700" fill="#cfe6db">Redis</text>
+      <text x="536" y="342" font-size="12" fill="#9dc0b2">quote cache</text>
+      <text x="536" y="360" font-size="12" fill="#9dc0b2">5 min TTL</text>
+    </g>
+
+    <!-- Observability -->
+    <g>
+      <rect x="330" y="416" width="160" height="76" rx="14" fill="url(#card)" stroke="#4d7a6b"/>
+      <text x="350" y="446" font-size="14" font-weight="700" fill="#cfe6db">Prometheus</text>
+      <text x="350" y="468" font-size="12" fill="#9dc0b2">scrapes /actuator</text>
+
+      <rect x="516" y="416" width="140" height="76" rx="14" fill="url(#card)" stroke="#4d7a6b"/>
+      <text x="536" y="446" font-size="14" font-weight="700" fill="#cfe6db">Grafana</text>
+      <text x="536" y="468" font-size="12" fill="#9dc0b2">dashboards</text>
+    </g>
+
+    <!-- Edges -->
+    <g stroke-width="2" fill="none">
+      <path d="M270 138 H385" stroke="#67f0a2" marker-end="url(#arrow)"/>
+      <text x="285" y="130" font-size="11" fill="#8fb6a7">REST /api</text>
+
+      <path d="M270 172 H385" stroke="#67f0a2" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+      <text x="283" y="192" font-size="11" fill="#8fb6a7">STOMP /ws</text>
+
+      <path d="M625 134 H700 V106 H740" stroke="#3ad1f0" marker-end="url(#arrow)"/>
+      <text x="636" y="100" font-size="11" fill="#8fb6a7">orders · quotes</text>
+
+      <path d="M625 170 H700 V222 H740" stroke="#f0c93a" marker-end="url(#arrow)"/>
+      <text x="636" y="248" font-size="11" fill="#8fb6a7">predict</text>
+
+      <path d="M470 200 V290" stroke="#4d7a6b" marker-end="url(#arrowDim)"/>
+      <path d="M550 200 V290" stroke="#4d7a6b" marker-end="url(#arrowDim)"/>
+      <path d="M410 370 V416" stroke="#4d7a6b" marker-end="url(#arrowDim)"/>
+      <path d="M490 454 H516" stroke="#4d7a6b" marker-end="url(#arrowDim)"/>
+    </g>
+
+    <text x="40" y="524" font-size="12" fill="#5d8375" font-style="italic">
+      All market data is synthetic. Nothing shown represents a real security or executable order.
+    </text>
+  </g>
+</svg>

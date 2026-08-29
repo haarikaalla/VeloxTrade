@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-platform
+  labels:
+    app.kubernetes.io/name: veloxtrade-platform
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.platform.replicaCount }}
+  selector:
+    matchLabels: { app: veloxtrade-platform }
+  template:
+    metadata:
+      labels: { app: veloxtrade-platform }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: platform
+          image: "{{ .Values.imageRegistry }}/{{ .Values.platform.image }}:{{ .Values.platform.tag }}"
+          ports: [{ containerPort: 8080 }]
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: {{ .Values.platform.datasourceUrl | quote }}
+            - name: SPRING_DATASOURCE_USERNAME
+              value: {{ .Values.platform.datasourceUsername | quote }}
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.platform.existingDatabaseSecret | default (printf "%s-platform" .Release.Name) }}
+                  key: datasource-password
+            - name: SPRING_DATA_REDIS_HOST
+              value: {{ .Values.platform.redisHost | quote }}
+            - name: VELOXTRADE_ENGINE_URL
+              value: "http://{{ .Release.Name }}-engine:{{ .Values.engine.port }}"
+            - name: VELOXTRADE_ANALYTICS_URL
+              value: "http://{{ .Release.Name }}-analytics:{{ .Values.analytics.port }}"
+            - name: VELOXTRADE_ALLOWED_ORIGINS
+              value: {{ .Values.platform.allowedOrigins | quote }}
+            - name: VELOXTRADE_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-platform
+                  key: jwt-secret
+          resources: {{- toYaml .Values.platform.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-platform
+spec:
+  selector: { app: veloxtrade-platform }
+  ports: [{ port: {{ .Values.platform.port }}, targetPort: 8080 }]

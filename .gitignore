@@ -1,0 +1,13 @@
+.idea/
+.vscode/
+**/target/
+**/build/
+**/.gradle/
+**/node_modules/
+**/.angular/
+**/dist/
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+.env
+*.log

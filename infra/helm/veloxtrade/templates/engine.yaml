@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-engine
+  labels:
+    app.kubernetes.io/name: veloxtrade-engine
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.engine.replicaCount }}
+  selector:
+    matchLabels: { app: veloxtrade-engine }
+  template:
+    metadata:
+      labels: { app: veloxtrade-engine }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: engine
+          image: "{{ .Values.imageRegistry }}/{{ .Values.engine.image }}:{{ .Values.engine.tag }}"
+          ports: [{ containerPort: 8081 }]
+          resources: {{- toYaml .Values.engine.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          readinessProbe:
+            httpGet: { path: /health, port: 8081 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8081 }
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-engine
+spec:
+  selector: { app: veloxtrade-engine }
+  ports: [{ port: {{ .Values.engine.port }}, targetPort: 8081 }]

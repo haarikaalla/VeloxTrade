@@ -1,0 +1,47 @@
+imageRegistry: ghcr.io/example
+
+# Shared platform configuration. jwtSecret MUST be supplied at install time,
+# e.g. --set platform.jwtSecret=$(openssl rand -base64 48)
+platform:
+  image: veloxtrade-platform
+  tag: 1.0.0
+  replicaCount: 2
+  port: 8080
+  jwtSecret: ""
+  allowedOrigins: "http://localhost:4200"
+  datasourceUrl: jdbc:postgresql://postgres:5432/veloxtrade
+  datasourceUsername: velox
+  # Prefer an existing secret over an inline value in real clusters.
+  existingDatabaseSecret: ""
+  datasourcePassword: ""
+  redisHost: redis
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+engine:
+  image: veloxtrade-engine
+  tag: 1.0.0
+  replicaCount: 1
+  port: 8081
+  resources:
+    requests: { cpu: 250m, memory: 128Mi }
+    limits: { cpu: "1", memory: 256Mi }
+
+analytics:
+  image: veloxtrade-analytics
+  tag: 1.0.0
+  replicaCount: 2
+  port: 8000
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+dashboard:
+  image: veloxtrade-dashboard
+  tag: 1.0.0
+  replicaCount: 2
+  port: 80
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 128Mi }

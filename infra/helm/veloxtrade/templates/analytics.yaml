@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-analytics
+  labels:
+    app.kubernetes.io/name: veloxtrade-analytics
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.analytics.replicaCount }}
+  selector:
+    matchLabels: { app: veloxtrade-analytics }
+  template:
+    metadata:
+      labels: { app: veloxtrade-analytics }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: analytics
+          image: "{{ .Values.imageRegistry }}/{{ .Values.analytics.image }}:{{ .Values.analytics.tag }}"
+          ports: [{ containerPort: 8000 }]
+          resources: {{- toYaml .Values.analytics.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-analytics
+spec:
+  selector: { app: veloxtrade-analytics }
+  ports: [{ port: {{ .Values.analytics.port }}, targetPort: 8000 }]

@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: C++ matching engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S engine-cpp -B build/engine -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/engine --parallel
+      - name: Test
+        run: ctest --test-dir build/engine --output-on-failure
+
+  platform:
+    name: Spring Boot platform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Test and package
+        run: mvn -B -f platform-java/pom.xml test package
+
+  analytics:
+    name: Python analytics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install
+        run: pip install -r ml-python/requirements-dev.txt
+      - name: Test
+        run: pytest
+        working-directory: ml-python
+
+  dashboard:
+    name: Angular dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm install
+        working-directory: dashboard-angular
+      - name: Test
+        run: npx ng test --watch=false --browsers=ChromeHeadless
+        working-directory: dashboard-angular
+      - name: Build
+        run: npm run build
+        working-directory: dashboard-angular
+
+  compose:
+    name: Compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file
+        run: docker compose config --quiet
