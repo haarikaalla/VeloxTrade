@@ -27,8 +27,7 @@ Low-latency C++ matching · enterprise Java APIs · Python analytics · a live A
 
 </div>
 
-> [!WARNING]
-> **Simulation only.** Every price, prediction, account, and order here is synthetic. Nothing in this project represents a real security, an executable order, or investment advice.
+
 
 ---
 
