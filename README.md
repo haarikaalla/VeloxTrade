@@ -292,6 +292,15 @@ The chart deploys all four services with probes, resource limits, and security c
 
 VeloxTrade is four independently deployable services connected over HTTP/JSON and WebSocket/STOMP, backed by TimescaleDB (PostgreSQL 16) and Redis, and observed via Prometheus/Grafana.
 
+<div align="center">
+  <img src="docs/assets/hld.svg" alt="VeloxTrade high-level design" width="100%">
+</div>
+
+<details>
+<summary><b>Same diagram as Mermaid source</b></summary>
+
+<br>
+
 ```mermaid
 flowchart TB
   subgraph Client
@@ -327,6 +336,8 @@ flowchart TB
   Platform -- "/actuator/prometheus" --> PROM
 ```
 
+</details>
+
 **Responsibilities per service**
 
 | Service | Responsibility | Talks to |
@@ -349,6 +360,10 @@ flowchart TB
 ---
 
 ## Low-level design (LLD)
+
+<div align="center">
+  <img src="docs/assets/lld.svg" alt="VeloxTrade low-level design" width="100%">
+</div>
 
 ### Matching engine (`engine-cpp`)
 

@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 840" width="1200" height="840" role="img" aria-label="VeloxTrade high-level design diagram">
+  <defs>
+    <linearGradient id="hldCard" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0e2620"/>
+      <stop offset="100%" stop-color="#0a1c18"/>
+    </linearGradient>
+    <linearGradient id="hldInner" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#123029"/>
+      <stop offset="100%" stop-color="#0d221d"/>
+    </linearGradient>
+    <marker id="hldArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#67f0a2"/>
+    </marker>
+    <marker id="hldArrowCyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3ad1f0"/>
+    </marker>
+    <marker id="hldArrowGold" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f0c93a"/>
+    </marker>
+    <marker id="hldArrowDim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#6d9a8a"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="840" fill="#07120f"/>
+
+  <g font-family="'Segoe UI', Arial, sans-serif">
+    <text x="40" y="52" font-size="26" font-weight="800" fill="#eafff4">VeloxTrade &#8212; High-Level Design</text>
+    <text x="40" y="80" font-size="14" fill="#7fa596">Four independently deployable services. Every service boundary is HTTP/JSON; the browser also holds a STOMP WebSocket for live push.</text>
+
+    <text x="40" y="128" font-size="12" font-weight="700" fill="#4d7a6b" letter-spacing="2">1 &#183; CLIENT TIER</text>
+    <text x="40" y="270" font-size="12" font-weight="700" fill="#4d7a6b" letter-spacing="2">2 &#183; APPLICATION TIER</text>
+    <text x="40" y="622" font-size="12" font-weight="700" fill="#4d7a6b" letter-spacing="2">3 &#183; DATA TIER</text>
+    <text x="800" y="622" font-size="12" font-weight="700" fill="#4d7a6b" letter-spacing="2">4 &#183; OBSERVABILITY</text>
+
+    <!-- ===== Client ===== -->
+    <g>
+      <rect x="40" y="142" width="420" height="94" rx="14" fill="url(#hldCard)" stroke="#67f0a2" stroke-opacity="0.55"/>
+      <text x="62" y="174" font-size="17" font-weight="700" fill="#67f0a2">Angular 19 dashboard</text>
+      <text x="62" y="198" font-size="12.5" fill="#9dc0b2">Standalone components &#183; signals &#183; OnPush</text>
+      <text x="62" y="219" font-size="12.5" fill="#9dc0b2">nginx serves the bundle and proxies /api + /ws</text>
+      <text x="440" y="169" font-size="11" font-weight="700" fill="#4d7a6b" text-anchor="end">:4200</text>
+    </g>
+
+    <!-- ===== Platform container ===== -->
+    <g>
+      <rect x="40" y="286" width="700" height="272" rx="16" fill="none" stroke="#67f0a2" stroke-opacity="0.35" stroke-dasharray="6 5"/>
+      <text x="62" y="314" font-size="17" font-weight="700" fill="#67f0a2">Spring Boot 3.4 platform</text>
+      <text x="718" y="314" font-size="11" font-weight="700" fill="#4d7a6b" text-anchor="end">:8080</text>
+
+      <rect x="62" y="330" width="300" height="96" rx="12" fill="url(#hldInner)" stroke="#4d7a6b"/>
+      <text x="82" y="356" font-size="13.5" font-weight="700" fill="#cfe6db">Web &#183; REST controllers</text>
+      <text x="82" y="378" font-size="11.5" fill="#9dc0b2">/api/auth &#183; /api/orders &#183; /api/portfolio</text>
+      <text x="82" y="397" font-size="11.5" fill="#9dc0b2">/api/market quote depth history signal</text>
+      <text x="82" y="416" font-size="11.5" fill="#9dc0b2">One ApiError envelope: 400 / 422 / 503</text>
+
+      <rect x="420" y="330" width="298" height="96" rx="12" fill="url(#hldInner)" stroke="#4d7a6b"/>
+      <text x="440" y="356" font-size="13.5" font-weight="700" fill="#cfe6db">Services &#183; business rules</text>
+      <text x="440" y="378" font-size="11.5" fill="#9dc0b2">TradingService &#183; PortfolioService</text>
+      <text x="440" y="397" font-size="11.5" fill="#9dc0b2">AccountService &#183; MarketDataService</text>
+      <text x="440" y="416" font-size="11.5" fill="#9dc0b2">Buying power &#183; short selling blocked</text>
+
+      <rect x="62" y="440" width="300" height="98" rx="12" fill="url(#hldInner)" stroke="#4d7a6b"/>
+      <text x="82" y="466" font-size="13.5" font-weight="700" fill="#cfe6db">Security &#183; stateless</text>
+      <text x="82" y="488" font-size="11.5" fill="#9dc0b2">HS256 JWT (12 h) &#183; BCrypt(12)</text>
+      <text x="82" y="507" font-size="11.5" fill="#9dc0b2">JwtAuthenticationFilter &#8594; ROLE_TRADER</text>
+      <text x="82" y="526" font-size="11.5" fill="#9dc0b2">Decoy hash defeats user enumeration</text>
+
+      <rect x="420" y="440" width="298" height="98" rx="12" fill="url(#hldInner)" stroke="#4d7a6b"/>
+      <text x="440" y="466" font-size="13.5" font-weight="700" fill="#cfe6db">Push &#183; STOMP broker</text>
+      <text x="440" y="488" font-size="11.5" fill="#9dc0b2">Endpoint /ws &#183; app prefix /app</text>
+      <text x="440" y="507" font-size="11.5" fill="#9dc0b2">/topic/market/VLX &#183; /topic/depth/VLX</text>
+      <text x="440" y="526" font-size="11.5" fill="#9dc0b2">Fed by the 1 s scheduled engine poll</text>
+    </g>
+
+    <!-- ===== Engine ===== -->
+    <g>
+      <rect x="840" y="286" width="320" height="118" rx="14" fill="url(#hldCard)" stroke="#3ad1f0" stroke-opacity="0.6"/>
+      <text x="862" y="318" font-size="17" font-weight="700" fill="#3ad1f0">C++20 matching engine</text>
+      <text x="862" y="342" font-size="11.5" fill="#9dc0b2">Price-time priority book &#183; integer ticks</text>
+      <text x="862" y="362" font-size="11.5" fill="#9dc0b2">Own HTTP/1.1 server &#183; zero dependencies</text>
+      <text x="862" y="382" font-size="11.5" fill="#9dc0b2">Nanosecond latency &#183; simulated drift</text>
+      <text x="1140" y="311" font-size="11" font-weight="700" fill="#4d7a6b" text-anchor="end">engine:8081</text>
+    </g>
+
+    <!-- ===== Analytics ===== -->
+    <g>
+      <rect x="840" y="428" width="320" height="110" rx="14" fill="url(#hldCard)" stroke="#f0c93a" stroke-opacity="0.55"/>
+      <text x="862" y="460" font-size="17" font-weight="700" fill="#f0c93a">FastAPI analytics</text>
+      <text x="862" y="484" font-size="11.5" fill="#9dc0b2">EWMA momentum + realised volatility</text>
+      <text x="862" y="504" font-size="11.5" fill="#9dc0b2">Sigmoid &#8594; UP / DOWN / FLAT + confidence</text>
+      <text x="862" y="524" font-size="11.5" fill="#9dc0b2">Simulated market only &#8212; not advice</text>
+      <text x="1140" y="453" font-size="11" font-weight="700" fill="#4d7a6b" text-anchor="end">:8000</text>
+    </g>
+
+    <!-- ===== Data tier ===== -->
+    <g>
+      <rect x="40" y="638" width="340" height="118" rx="14" fill="url(#hldCard)" stroke="#4d7a6b"/>
+      <text x="62" y="670" font-size="15" font-weight="700" fill="#cfe6db">TimescaleDB / PostgreSQL 16</text>
+      <text x="62" y="694" font-size="11.5" fill="#9dc0b2">accounts &#183; positions &#183; orders</text>
+      <text x="62" y="714" font-size="11.5" fill="#9dc0b2">market_ticks hypertable (Flyway V1)</text>
+      <text x="62" y="734" font-size="11.5" fill="#9dc0b2">Falls back to a plain indexed table</text>
+
+      <rect x="400" y="638" width="340" height="118" rx="14" fill="url(#hldCard)" stroke="#4d7a6b"/>
+      <text x="422" y="670" font-size="15" font-weight="700" fill="#cfe6db">Redis 7.4</text>
+      <text x="422" y="694" font-size="11.5" fill="#9dc0b2">Key veloxtrade:quote:{symbol}</text>
+      <text x="422" y="714" font-size="11.5" fill="#9dc0b2">Latest quote snapshot &#183; 5 min TTL</text>
+      <text x="422" y="734" font-size="11.5" fill="#9dc0b2">Optional &#8212; platform runs without it</text>
+    </g>
+
+    <!-- ===== Observability ===== -->
+    <g>
+      <rect x="800" y="638" width="170" height="118" rx="14" fill="url(#hldCard)" stroke="#4d7a6b"/>
+      <text x="820" y="670" font-size="15" font-weight="700" fill="#cfe6db">Prometheus</text>
+      <text x="820" y="694" font-size="11.5" fill="#9dc0b2">Scrapes</text>
+      <text x="820" y="714" font-size="11.5" fill="#9dc0b2">/actuator/</text>
+      <text x="820" y="734" font-size="11.5" fill="#9dc0b2">prometheus</text>
+
+      <rect x="990" y="638" width="170" height="118" rx="14" fill="url(#hldCard)" stroke="#4d7a6b"/>
+      <text x="1010" y="670" font-size="15" font-weight="700" fill="#cfe6db">Grafana</text>
+      <text x="1010" y="694" font-size="11.5" fill="#9dc0b2">Match latency</text>
+      <text x="1010" y="714" font-size="11.5" fill="#9dc0b2">p50 / p95 / p99</text>
+      <text x="1010" y="734" font-size="11.5" fill="#9dc0b2">Provisioned</text>
+    </g>
+
+    <!-- ===== Edges ===== -->
+    <g stroke-width="2" fill="none">
+      <path d="M150 236 V330" stroke="#67f0a2" marker-end="url(#hldArrow)"/>
+      <text x="160" y="272" font-size="11.5" fill="#8fb6a7">REST /api</text>
+      <text x="160" y="290" font-size="11.5" fill="#5f8878">Bearer JWT</text>
+
+      <path d="M400 236 V266 H391 V489 H420" stroke="#67f0a2" stroke-dasharray="6 4" marker-start="url(#hldArrow)" marker-end="url(#hldArrow)"/>
+      <text x="410" y="252" font-size="11.5" fill="#8fb6a7">STOMP /ws push</text>
+      <text x="410" y="270" font-size="11.5" fill="#5f8878">2 s REST fallback</text>
+
+      <path d="M718 356 H840" stroke="#3ad1f0" marker-end="url(#hldArrowCyan)"/>
+      <text x="726" y="348" font-size="11" fill="#7fc4d6">POST /orders (sync)</text>
+      <path d="M718 382 H840" stroke="#3ad1f0" stroke-opacity="0.6" marker-end="url(#hldArrowCyan)"/>
+      <text x="726" y="400" font-size="11" fill="#5f8878">GET /quote + /depth</text>
+
+      <path d="M718 470 H840" stroke="#f0c93a" marker-end="url(#hldArrowGold)"/>
+      <text x="732" y="462" font-size="11" fill="#d6bb6f">POST /predict</text>
+
+      <path d="M210 558 V638" stroke="#67f0a2" marker-end="url(#hldArrow)"/>
+      <text x="220" y="600" font-size="11.5" fill="#8fb6a7">Spring Data JPA</text>
+
+      <path d="M570 558 V638" stroke="#67f0a2" marker-end="url(#hldArrow)"/>
+      <text x="580" y="600" font-size="11.5" fill="#8fb6a7">Quote cache</text>
+
+      <path d="M740 545 H770 V680 H800" stroke="#6d9a8a" marker-end="url(#hldArrowDim)"/>
+      <text x="762" y="600" font-size="11.5" fill="#6d9a8a" text-anchor="end">metrics</text>
+
+      <path d="M970 697 H990" stroke="#6d9a8a" marker-end="url(#hldArrowDim)"/>
+    </g>
+
+    <g>
+      <rect x="40" y="782" width="1120" height="34" rx="10" fill="#0a1c18" stroke="#20423a"/>
+      <circle cx="66" cy="799" r="5" fill="#67f0a2"/>
+      <text x="80" y="804" font-size="12" fill="#9dc0b2">Platform traffic</text>
+      <circle cx="226" cy="799" r="5" fill="#3ad1f0"/>
+      <text x="240" y="804" font-size="12" fill="#9dc0b2">Engine calls (synchronous order path)</text>
+      <circle cx="506" cy="799" r="5" fill="#f0c93a"/>
+      <text x="520" y="804" font-size="12" fill="#9dc0b2">Analytics call</text>
+      <circle cx="646" cy="799" r="5" fill="#6d9a8a"/>
+      <text x="660" y="804" font-size="12" fill="#9dc0b2">Observability scrape</text>
+      <text x="830" y="804" font-size="12" fill="#9dc0b2">Dashed line = WebSocket push channel</text>
+    </g>
+  </g>
+</svg>
