@@ -290,59 +290,61 @@ The chart deploys all four services with probes, resource limits, and security c
 
 ## High-level design (HLD)
 
-VeloxTrade is four independently deployable services connected over HTTP/JSON and WebSocket/STOMP, backed by PostgreSQL/TimescaleDB and Redis, and observed via Prometheus/Grafana.
+VeloxTrade is four independently deployable services connected over HTTP/JSON and WebSocket/STOMP, backed by TimescaleDB (PostgreSQL 16) and Redis, and observed via Prometheus/Grafana.
 
 ```mermaid
 flowchart TB
   subgraph Client
-    UI[Angular 19 Dashboard]
+    UI["Angular 19 dashboard (:4200)"]
   end
 
-  subgraph Platform["Spring Boot 3.4 Platform (:8080)"]
-    AUTH[Auth: JWT + BCrypt]
-    TRADE[Trading Service]
-    PORT[Portfolio Service]
-    MKT[Market Data Service]
-    WS[STOMP /ws broadcaster]
+  subgraph Platform["Spring Boot 3.4 platform (:8080)"]
+    AUTHC["AuthController /api/auth/**"]
+    TRADEC["TradingController /api/orders, /api/portfolio"]
+    MKTC["MarketController /api/market/**"]
+    MDS["MarketDataService @Scheduled 1s"]
+    WS["WebSocketConfig — STOMP /ws, broker /topic"]
   end
 
-  ENGINE[C++20 Matching Engine :8081]
-  ML[FastAPI Analytics :8000]
-  DB[(PostgreSQL / TimescaleDB)]
-  CACHE[(Redis)]
-  MON[Prometheus + Grafana]
+  ENGINE["C++20 matching engine (engine:8081)"]
+  ML["FastAPI analytics (:8000)"]
+  DB[("TimescaleDB / PostgreSQL 16")]
+  CACHE[("Redis 7.4")]
+  PROM["Prometheus"] --> GRAF["Grafana"]
 
-  UI -- REST /api --> Platform
-  UI -- STOMP /ws --> WS
-  AUTH --> DB
-  TRADE --> ENGINE
-  TRADE --> DB
-  PORT --> DB
-  MKT --> ENGINE
-  MKT --> CACHE
-  MKT --> ML
-  WS --> UI
-  Platform -- /actuator/prometheus --> MON
+  UI -- "REST /api" --> AUTHC
+  UI -- "REST /api" --> TRADEC
+  UI -- "REST /api" --> MKTC
+  UI <-- "STOMP /ws" --> WS
+  AUTHC --> DB
+  TRADEC -- "POST /orders" --> ENGINE
+  TRADEC --> DB
+  MKTC -- "POST /predict" --> ML
+  MDS -- "GET /quote, /depth" --> ENGINE
+  MDS --> CACHE
+  MDS --> DB
+  MDS --> WS
+  Platform -- "/actuator/prometheus" --> PROM
 ```
 
 **Responsibilities per service**
 
 | Service | Responsibility | Talks to |
 | :--- | :--- | :--- |
-| **Dashboard (Angular)** | Renders price chart, depth ladder, order ticket, portfolio, blotter; authenticates and streams live updates | Platform REST + STOMP |
-| **Platform (Spring Boot)** | AuthN/AuthZ, order validation & buying-power/short-sell rules, persistence, portfolio accounting, market-data polling/caching, WebSocket fan-out, metrics | Engine, Analytics, PostgreSQL, Redis, Prometheus |
-| **Engine (C++20)** | In-memory price-time-priority order book, matching, nanosecond latency stamping | Called synchronously by Platform over its own HTTP server |
-| **Analytics (FastAPI)** | Computes a directional signal from recent tick history | Called by Platform's `MarketDataService` |
-| **PostgreSQL/TimescaleDB** | Durable store for accounts, positions, orders, and tick history (hypertable when available) | Platform only |
-| **Redis** | Short-lived cache for the latest quote/depth snapshot | Platform only |
-| **Prometheus/Grafana** | Scrapes `/actuator/prometheus`, visualises latency and system health | Platform |
+| **Dashboard (Angular 19)** | Price chart, depth ladder, order ticket, portfolio, blotter; JWT session in `sessionStorage`; live STOMP stream with a REST-polling safety net | Platform REST + STOMP |
+| **Platform (Spring Boot 3.4)** | AuthN/AuthZ, order validation and trading rules, persistence, portfolio accounting, engine polling + Redis caching + tick history, WebSocket fan-out, Micrometer metrics | Engine, Analytics, PostgreSQL, Redis, Prometheus |
+| **Engine (C++20)** | In-memory price-time-priority book, matching, nanosecond latency stamping, and a **simulated price random walk** that seeds liquidity | Serves its own HTTP/1.1 API to the Platform |
+| **Analytics (FastAPI)** | EWMA momentum + realised-volatility directional signal over recent returns | Called by `MarketController` via `AnalyticsClient` |
+| **TimescaleDB** | `accounts`, `positions`, `orders`, and `market_ticks` (hypertable when the extension is available) | Platform only |
+| **Redis 7.4** | 5-minute TTL cache of the latest quote snapshot | Platform only |
+| **Prometheus / Grafana** | Scrapes `/actuator/prometheus`; dashboards provisioned from `infra/grafana` | Platform |
 
 **Key architectural decisions**
 
-- **Service boundary = HTTP/JSON**, deliberately avoiding gRPC/codegen so the engine stays dependency-free and every service builds with a single, ordinary toolchain (see [Architecture](#architecture)).
-- **Synchronous request/response** between Platform and Engine keeps order submission simple and lets match latency be measured end-to-end per order.
-- **Push + poll hybrid** for live data: Platform polls the engine every second and pushes over STOMP, while the dashboard falls back to REST polling if the socket drops.
-- **Stateless auth**: HS256 JWTs mean Platform instances can scale horizontally with no shared session store.
+- **Service boundary = HTTP/JSON**, deliberately avoiding gRPC/codegen so the engine stays dependency-free (see [Architecture](#architecture)).
+- **Synchronous request/response** between Platform and Engine for order submission, so match latency is measured and stored per order.
+- **Push + poll hybrid**: `MarketDataService` polls the engine every second and fans out over STOMP; the dashboard additionally polls REST every 2s (quote/depth) and 10s (portfolio/orders) as a safety net.
+- **Stateless auth**: HS256 JWTs (12h TTL) mean Platform instances scale horizontally with no shared session store.
 
 ---
 
@@ -350,56 +352,84 @@ flowchart TB
 
 ### Matching engine (`engine-cpp`)
 
-- `OrderBook` (see [order_book.hpp](engine-cpp/include/velox/order_book.hpp)) holds two price-time-priority ladders:
-  - `BidLadder = std::map<int64_t, std::deque<Order>, std::greater<>>`
-  - `AskLadder = std::map<int64_t, std::deque<Order>, std::less<>>`
-  - Prices are `int64_t` **integer ticks** (cents), avoiding floating-point drift during matching.
-- `OrderBook::submit(side, price_ticks, quantity)` walks the opposing ladder while prices cross, filling FIFO within a price level (time priority via a monotonic `sequence` counter), and returns a `MatchResult` containing every `Fill` plus any resting remainder.
-- `OrderBook::cancel(order_id)` removes a resting order by scanning its ladder; `depth(levels)` aggregates quantity per price level for the top N levels each side.
-- `EngineService` / `http_server` (in `src/engine_service.cpp`, `src/http_server.cpp`) expose this book over a hand-rolled HTTP/1.1 server (BSD sockets/Winsock, no third-party libraries), serialising requests/responses as JSON.
-- The book itself is **not thread-safe**; the HTTP layer serialises access, so there is a single logical matching thread per symbol.
+**HTTP surface** (hand-rolled HTTP/1.1 server, no third-party libraries):
+
+| Method | Path | Response |
+| :--- | :--- | :--- |
+| `GET` | `/health` | `{"status":"UP","service":"veloxtrade-engine"}` |
+| `GET` | `/quote` | `{symbol, price, bid, ask, restingOrders, timestamp}` |
+| `GET` | `/depth` | `{symbol, bids[], asks[], timestamp}` — top 8 levels per side |
+| `POST` | `/orders` | `{orderId, status, filledQuantity, restingQuantity, matchLatencyNanos, fills[], executedAt}` |
+
+Wrong method → `405`; unknown path → `404`. Port comes from `ENGINE_PORT` (default `8081`), bound on `0.0.0.0`.
+
+- **`OrderBook`** ([order_book.hpp](engine-cpp/include/velox/order_book.hpp)) keeps two price-time-priority ladders:
+  - `BidLadder = std::map<int64_t, std::deque<Order>, std::greater<>>` (descending)
+  - `AskLadder = std::map<int64_t, std::deque<Order>, std::less<>>` (ascending)
+  - Prices are `int64_t` **integer ticks (cents)**, so matching never suffers float drift.
+- `submit(side, price_ticks, quantity)` walks the opposing ladder best-price-first, fills FIFO within each level (time priority via a monotonic `sequence`), and returns a `MatchResult` with every `Fill` plus any resting remainder. `cancel(order_id)` scans both ladders and erases the price level when its deque empties. `depth(levels)` aggregates quantity per level.
+- **`EngineService`** owns a `std::mutex` guarding the book; `quote_json()`, `depth_json()`, `submit_json()` and `drift()` all take a `std::lock_guard`. Match latency is measured inside `submit_json()` with `std::chrono::steady_clock` and reported as `matchLatencyNanos`.
+- **Market simulation:** a detached thread calls `drift()` every 500 ms, applying a `std::normal_distribution(0.0, 18.0)` shock in ticks, clamping the price to `[1000, 10000000]`, and reseeding 6 levels of random liquidity per side whenever the book thins out.
+- **`HttpServer`** uses a blocking accept loop (backlog 64) and spawns a **detached thread per connection**; the service mutex keeps the book consistent across those threads.
 
 ### Platform (`platform-java`)
 
-**Layering:** `web` (controllers) → `service` (business rules) → `repository` (Spring Data JPA) → PostgreSQL, with `security` handling JWT issuance/validation and `config` holding HTTP-client/WebSocket wiring.
+**Layering:** `web` (controllers) → `service` (rules) → `repository` (Spring Data JPA) → PostgreSQL, with `security` for JWT and `config` for HTTP clients, properties, and WebSocket wiring.
 
 | Class | Layer | Purpose |
 | :--- | :--- | :--- |
-| `AuthController` | web | `/api/auth/register`, `/api/auth/login` |
-| `TradingController` | web | `/api/orders` (submit, list) |
-| `MarketController` | web | `/api/market/*` quote, depth, history, signal |
-| `ApiExceptionHandler` | web | Maps `TradingRuleException` → 422, validation → 400, `UpstreamUnavailableException` → 503, into one `ApiError` envelope |
-| `AccountService` | service | Registration, credential checks with a decoy-hash comparison for unknown emails |
-| `TradingService` | service | Validates buying power / short-sell rules, calls `EngineClient`, applies fills to `Account`/`Position` in one transaction, persists the `TradeOrder` |
-| `PortfolioService` | service | Computes weighted-average cost basis, unrealised P&L, and net liquidation value |
-| `MarketDataService` | service | Polls `EngineClient` every second, caches the quote/depth in Redis, calls `AnalyticsClient` for the signal, and pushes STOMP frames |
-| `EngineClient` | service | HTTP client to the C++ engine (`HttpClientConfig` supplies the `RestClient`/timeouts) |
-| `AnalyticsClient` | service | HTTP client to the FastAPI analytics service |
+| `AuthController` | web | `POST /api/auth/register` (201), `POST /api/auth/login` → `AuthResponse` |
+| `TradingController` | web | `POST /api/orders` (201), `GET /api/orders?limit=20`, `GET /api/portfolio` — all authenticated |
+| `MarketController` | web | `GET /api/market/quote`, `/depth`, `/history?limit=60` (clamped 1–500), `/signal` — public |
+| `ApiExceptionHandler` | web | One `ApiError` envelope: validation → 400, `TradingRuleException` → 422, `UpstreamUnavailableException` → 503 |
+| `AccountService` | service | Registration with `openingCash` (100,000); login compares against a BCrypt **decoy hash** of a random UUID when the email is unknown, so timing is identical |
+| `TradingService` | service | `placeOrder` (`@Transactional`) and `recentOrders` (`@Transactional(readOnly = true)`) |
+| `PortfolioService` | service | Per-position `marketValue`, `costBasis`, `unrealizedPnl`; aggregates `positionsValue` and `netLiquidation = cash + positionsValue` |
+| `MarketDataService` | service | `@Scheduled(fixedRateString = "${veloxtrade.tick-interval}")` — 1s engine poll, Redis cache, tick persistence, STOMP broadcast |
+| `EngineClient` | service | `RestClient` (`@Qualifier("engineRestClient")`) → engine `GET /quote`, `GET /depth`, `POST /orders` |
+| `AnalyticsClient` | service | `RestClient` (`analyticsRestClient`) → analytics `POST /predict` with `{symbol, lastPrice, recentReturns}` |
+| `JwtService` | security | Issues/verifies HS256 tokens (subject = account UUID, `email` claim, 12h TTL); a secret shorter than 32 bytes triggers a warning and an **ephemeral key** |
+| `JwtAuthenticationFilter` | security | `OncePerRequestFilter`; parses `Authorization: Bearer`, sets an `AuthenticatedAccount` principal with `ROLE_TRADER` |
+| `SecurityConfig` | security | CSRF off, CORS from config, `SessionCreationPolicy.STATELESS`; permits auth, `GET /api/market/**`, `/ws/**`, health/prometheus, Swagger; everything else authenticated; 401 on failure |
+| `HttpClientConfig` | config | Builds the two `RestClient` beans with per-target connect/read timeouts (engine 2s, analytics 3s) |
+| `PlatformProperties` | config | `@ConfigurationProperties("veloxtrade")` record: `symbol`, `openingCash`, `tickInterval`, `allowedOrigins`, `engine`, `analytics`, `security` |
+| `WebSocketConfig` | config | STOMP endpoint `/ws`, simple broker on `/topic`, app prefix `/app`, origins from `allowedOrigins` |
+
+**Order flow inside `TradingService.placeOrder`:**
+
+1. Reject if the symbol ≠ `properties.symbol()` (`VLX`) or the account is missing → `TradingRuleException` → 422.
+2. **BUY:** reject when `cashBalance < limitPrice × quantity` (buying-power check). **SELL:** reject when the held `Position.quantity < request.quantity` — short selling is blocked.
+3. Call `EngineClient.submitOrder`; upstream failures surface as `UpstreamUnavailableException` → 503.
+4. For each returned fill, accumulate cash moved and call `Position.apply(side, qty, price)` (weighted-average cost basis); then `account.debit(...)` on BUY or `account.credit(...)` on SELL.
+5. Persist `Position`, `Account`, and a `TradeOrder` row inside the same transaction.
+
+**Market data loop (`MarketDataService.pollEngine`, every 1s):** `GET /quote` + `GET /depth` from the engine → cache the quote in Redis under `veloxtrade:quote:{symbol}` with a 5-minute TTL (`StringRedisTemplate` is optional and injected via `ObjectProvider`, so the app runs without Redis) → persist a `MarketTick` → `convertAndSend` to `/topic/market/{symbol}` and `/topic/depth/{symbol}`.
 
 **Domain model → schema** (see [V1__baseline.sql](platform-java/src/main/resources/db/migration/V1__baseline.sql)):
 
-- `Account` → `accounts` (uuid pk, unique `email`, BCrypt `password_hash`, `cash_balance numeric(19,2)`).
-- `Position` → `positions`, unique on `(account_id, symbol)`, with an optimistic-locking `version` column.
-- `TradeOrder` → `orders`, storing `side`/`status` enums as strings, `filled_quantity`, `average_fill_price`, the originating `engine_order_id`, and `match_latency_nanos`.
-- `MarketTick` → `market_ticks`, keyed on `(id, observed_at)` so it can be promoted to a TimescaleDB hypertable (falls back to a plain indexed table when the extension is absent).
+- `Account` → `accounts` (uuid pk, unique `email`, BCrypt(12) `password_hash`, `cash_balance numeric(19,2)`, `created_at`).
+- `Position` → `positions`, unique on `(account_id, symbol)`, with an **`@Version` optimistic-locking** column guarding concurrent fills.
+- `TradeOrder` → `orders`, storing `side`/`status` enums as strings plus `filled_quantity`, `average_fill_price`, `engine_order_id`, and `match_latency_nanos`.
+- `MarketTick` → `market_ticks`, keyed on `(id, observed_at)` so it can be promoted to a TimescaleDB hypertable, falling back to a plain indexed table when the extension is absent.
 
-**Concurrency & correctness:** order fills, cash debits/credits, and position updates happen inside a single `@Transactional` boundary; `Position.version` provides optimistic locking against concurrent fills on the same symbol.
+**Repositories:** `AccountRepository` (`findByEmailIgnoreCase`, `existsByEmailIgnoreCase`), `PositionRepository` (`findByAccountId`, `findByAccountIdAndSymbol`), `TradeOrderRepository` (`findByAccountIdOrderByCreatedAtDesc`), `MarketTickRepository` (`findBySymbolOrderByObservedAtDesc`) — all `JpaRepository` with `Limit` parameters.
 
 ### Analytics (`ml-python`)
 
-- `app/main.py` exposes the FastAPI routes consumed by `AnalyticsClient` (directional signal endpoint, OpenAPI docs at `/docs`).
-- `app/model.py` implements the signal computation over the recent tick window supplied by Platform; pure-function style so `tests/test_model.py` can assert on behaviour without spinning up HTTP.
-- `tests/test_api.py` covers the FastAPI contract (status codes, response shape).
+- `app/main.py` exposes `GET /health` and `POST /predict`. `PredictionRequest` = `{symbol, lastPrice, recentReturns[]}` (window capped at `MAX_WINDOW = 120`); `PredictionResponse` = `{symbol, direction, confidence, momentum, volatility, horizonSeconds, disclaimer}`.
+- `app/model.py` is pure-function: `_ewma(values, half_life=8.0)` for momentum, `_volatility(values)` for realised (sample) standard deviation, then `scaled = momentum / (volatility + 1e-6)` and `P(up) = sigmoid(4.0 × scaled)`. Direction is `UP`/`DOWN` around 0.5 and `FLAT` with no data; confidence is clipped to `[0, 0.85]`. Results are returned as a frozen `Signal` dataclass with `DEFAULT_HORIZON_SECONDS = 60` and a fixed simulation `DISCLAIMER`.
+- `tests/test_model.py` asserts the algorithm directly; `tests/test_api.py` covers the HTTP contract.
 
 ### Dashboard (`dashboard-angular`)
 
-- **Components** (`components/`): `price-chart`, `order-book` (depth ladder), `auth-panel` — all standalone, `OnPush`, signal-driven.
+- **Components** (`components/`): `price-chart` (hand-drawn SVG area chart — no charting library), `order-book` (depth ladder with proportional liquidity bars), `auth-panel` (login/register toggle) — all standalone, `OnPush`, signal-driven.
 - **Core services** (`core/`):
-  - `auth.service.ts` — login/register, JWT storage, exposes an auth signal.
-  - `auth.interceptor.ts` — attaches the `Authorization: Bearer` header to outgoing requests.
-  - `market-api.service.ts` — typed REST calls for quote/depth/history/orders/portfolio (see `models.ts` for DTOs).
-  - `market-stream.service.ts` — opens the STOMP/WebSocket connection to `/ws`, subscribes to `/topic/market/VLX` and `/topic/depth/VLX`, and falls back to REST polling if the socket disconnects.
-- `app.config.ts` wires the router, `HttpClient` with the auth interceptor, and app-wide providers; `proxy.conf.json` forwards `/api` and `/ws` to `localhost:8080` in dev.
+  - `auth.service.ts` — `register`/`login`/`logout`, session held in a `signal` and mirrored to `sessionStorage` under `veloxtrade.session`; exposes `isAuthenticated` and `displayName` computeds and expires the token on TTL.
+  - `auth.interceptor.ts` — `HttpInterceptorFn` that attaches `Authorization: Bearer` to `/api/` calls except `/api/auth/*`, and logs out on `401`.
+  - `market-api.service.ts` — typed calls: `quote`, `depth`, `history(limit=90)`, `signal`, `placeOrder`, `orders(limit=15)`, `portfolio` (DTO types in `models.ts` mirror the Java records).
+  - `market-stream.service.ts` — `@stomp/stompjs` `Client` over `ws(s)://…/ws`, subscribing to `/topic/market/{symbol}` and `/topic/depth/{symbol}`, exposing `quote`, `depth`, and `connected` signals with a 4s reconnect delay and 10s heartbeats.
+- `app.component.ts` owns the **REST fallback**: `interval(2000)` refreshes quote/depth whenever the socket is down, and `interval(10_000)` refreshes portfolio and orders.
+- `app.config.ts` provides `provideZoneChangeDetection({ eventCoalescing: true })` and `provideHttpClient(withInterceptors([authInterceptor]))`; `proxy.conf.json` forwards `/api` and `/ws` (with `ws: true`) to `localhost:8080` in dev, and nginx does the same in production.
 
 ---
 
