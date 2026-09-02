@@ -226,7 +226,7 @@ mvn spring-boot:run
 </details>
 
 <details>
-<summary><b>🧠 FastAPI analytics</b></summary>
+<summary><b> FastAPI analytics</b></summary>
 
 ```bash
 cd ml-python
@@ -288,7 +288,4 @@ The chart deploys all four services with probes, resource limits, and security c
 
 ---
 
-<div align="center">
-<sub>Built as a demonstration of polyglot distributed system design.<br>
-All market data is simulated. Not affiliated with any exchange. Not investment advice.</sub>
-</div>
+
